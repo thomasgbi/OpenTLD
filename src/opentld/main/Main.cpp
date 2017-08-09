@@ -31,19 +31,123 @@
 #include "TLDUtil.h"
 #include "Trajectory.h"
 
+#include <vector>
+#include <string>
+#include <dirent.h>
+#include <stdio.h>
+
+
 using namespace tld;
 using namespace cv;
+
+DIR *d;
+struct dirent *dir;
+
+//void
+//readImgsDir(string path, vector<string> *list_path_imgs){
+//	d = opendir(path.c_str());
+//	if(d)
+//	{
+//	while ((dir = readdir(d)) != NULL){
+//		string img_path = dir->d_name;
+////		std::cout << img_path.substr(img_path.find("."),img_path.length())<< std::endl;
+////		if(img_path.substr(img_path.find("."),img_path.length()) == "jpg")
+//			list_path_imgs->push_back(img_path);
+//
+//	}
+//
+//	}else{
+//		std::cout << "erro";
+//		exit(0);
+//	}
+//}
+
+
+
+double
+getJaccardCoefficient(Rect pred, Rect gt)
+{
+	double leftCol = pred.x;
+	double topRow = pred.y;
+	double rightCol = pred.x + pred.width;
+	double bottomRow = pred.y + pred.width;
+
+	double gtLeftCol = gt.x;
+	double gtTopRow = gt.y;
+	double gtRightCol = gt.x + gt.width;
+	double gtBottomRow = gt.y + gt.width;
+
+	double jaccCoeff = 0.;
+
+	if (!(leftCol > gtRightCol ||
+			rightCol < gtLeftCol ||
+			topRow > gtBottomRow ||
+			bottomRow < gtTopRow)
+	)
+	{
+		double interLeftCol = std::max<double>(leftCol, gtLeftCol);
+		double interTopRow = std::max<double>(topRow, gtTopRow);
+		double interRightCol = std::min<double>(rightCol, gtRightCol);
+		double interBottomRow = std::min<double>(bottomRow, gtBottomRow);
+
+		const double areaIntersection = (abs(interRightCol - interLeftCol) + 1) * (abs(interBottomRow - interTopRow) + 1);
+		const double lhRoiSize = (abs(rightCol - leftCol) + 1) * (abs(bottomRow - topRow) + 1);
+		const double rhRoiSize = (abs(gtRightCol - gtLeftCol) + 1) * (abs(gtBottomRow - gtTopRow) + 1);
+
+		jaccCoeff = areaIntersection / (lhRoiSize + rhRoiSize - areaIntersection);
+	}
+	return jaccCoeff;
+}
+
+
+void readGroundtruth(string video_path, vector<Rect> *ground_truth)
+{
+	string groundtruth_path = video_path + "/groundtruth.txt";
+	FILE* groundtruth_file_ptr = fopen(groundtruth_path.c_str(), "r");
+	std::cout <<  groundtruth_path << std::endl;
+
+	while (true)
+	{
+		// Read the annotation data.
+		Rect rect;
+		double x, y, width, height;
+		const int status = fscanf(groundtruth_file_ptr, "%lf,%lf,%lf,%lf\n",
+				&x, &y, &width, &height);
+
+		if (status == EOF)
+			break;
+
+		// Increment the frame number.
+		//frame_num++;
+		rect.x = x;
+		rect.y = y;
+		rect.width = width;
+		rect.height = height;
+
+		ground_truth->push_back(rect);
+
+	} // Process annotation file
+
+	fclose(groundtruth_file_ptr);
+}
 
 void Main::doWork()
 {
 	Trajectory trajectory;
+	std::cout << imAcq->imgPath;
     IplImage *img = imAcqGetImg(imAcq);
+
     Mat grey(img->height, img->width, CV_8UC1);
     cvtColor(cvarrToMat(img), grey, CV_BGR2GRAY);
 
     tld->detectorCascade->imgWidth = grey.cols;
     tld->detectorCascade->imgHeight = grey.rows;
     tld->detectorCascade->imgWidthStep = grey.step;
+
+    std::string path_gt = std::string(imAcq->imgPath);
+    vector<Rect> ground_truth;
+
+    readGroundtruth(path_gt, &ground_truth);
 
 	if(showTrajectory)
 	{
@@ -104,6 +208,7 @@ void Main::doWork()
 
     while(imAcqHasMoreFrames(imAcq))
     {
+    	int loss = 0;
         double tic = cvGetTickCount();
 
         if(!reuseFrameOnce)
@@ -129,18 +234,33 @@ void Main::doWork()
             skipProcessingOnce = false;
         }
 
+        double jaccard = 0.0001;
+
+        if(tld->currBB!=NULL)
+        {
+        	Rect tld_bb = *tld->currBB;
+        	jaccard = getJaccardCoefficient(tld_bb, ground_truth.at(imAcq->currentFrame));
+        }
+
+        if ((jaccard < 0.2) && (jaccard != 0.0001)){
+        	loss = 1;
+        	*tld->currBB = ground_truth.at(imAcq->currentFrame);
+//        	printf("Perdeu!!! Jaccard: %.2f\n", jaccard);
+        }
+
         if(printResults != NULL)
         {
             if(tld->currBB != NULL)
             {
-                fprintf(resultsFile, "%d %.2d %.2d %.2d %.2d %f\n", imAcq->currentFrame - 1, tld->currBB->x, tld->currBB->y, tld->currBB->width, tld->currBB->height, tld->currConf);
+                //fprintf(resultsFile, "%d %.2d %.2d %.2d %.2d %f\n", imAcq->currentFrame - 1, tld->currBB->x, tld->currBB->y, tld->currBB->width, tld->currBB->height, tld->currConf);
+                fprintf(resultsFile, "%.2d,%.2d,%.2d,%.2d,%.2lf,%d,%.2lf\n", tld->currBB->x, tld->currBB->y, tld->currBB->width, tld->currBB->height, jaccard, loss, tld->currConf);
             }
             else
             {
                 fprintf(resultsFile, "%d NaN NaN NaN NaN NaN\n", imAcq->currentFrame - 1);
             }
         }
-
+        loss = 0;
         double toc = (cvGetTickCount() - tic) / cvGetTickFrequency();
 
         toc = toc / 1000000;

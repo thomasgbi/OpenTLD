@@ -54,6 +54,7 @@ typedef struct
     int camNo;
     double startTime;
     float fps;
+    std::vector<std::string> list_path;
 } ImAcq ;
 
 ImAcq *imAcqAlloc();

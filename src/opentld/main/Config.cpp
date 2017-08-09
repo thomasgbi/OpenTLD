@@ -21,6 +21,8 @@
 
 #include "Main.h"
 
+
+
 using namespace std;
 
 namespace tld
@@ -425,6 +427,31 @@ int Config::init(int argc, char **argv)
     return SUCCESS;
 }
 
+void
+readImgsDir(string path, vector<string> *list_path_imgs){
+
+	char line[256];
+	string list_path = path + "imgs.txt";
+	FILE* list_path_ptr = fopen(list_path.c_str(), "r");
+	cout <<  list_path << endl;
+
+	while (true)
+	{
+		const int status = fscanf(list_path_ptr,"%s\n", &line);
+		string imgs = line;
+//		std::cout << "imgs " << imgs << endl;
+
+		if (status == EOF)
+			break;
+
+		list_path_imgs->push_back(imgs);
+
+	}
+
+	fclose(list_path_ptr);
+
+}
+
 int Config::configure(Main *main)
 {
     ImAcq *imAcq = main->imAcq;
@@ -436,6 +463,8 @@ int Config::configure(Main *main)
     imAcq->currentFrame = m_settings.m_startFrame;
     imAcq->camNo = m_settings.m_camNo;
     imAcq->fps = m_settings.m_fps;
+//    imAcq->list_path = readImgsDir(m_settings.m_imagePath);
+    readImgsDir(m_settings.m_imagePath, &imAcq->list_path);
 
     // main
     main->tld->trackerEnabled = m_settings.m_trackerEnabled;

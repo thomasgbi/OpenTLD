@@ -20,6 +20,8 @@
 #include "ImAcq.h"
 
 #include <cstdio>
+#include <string>
+#include <vector>
 
 #include <opencv/cv.h>
 #include <opencv/highgui.h>
@@ -137,12 +139,14 @@ IplImage *imAcqLoadImg(ImAcq *imAcq, char *path)
 
 IplImage *imAcqLoadFrame(ImAcq *imAcq, int fNo)
 {
-    char path[255];
-    sprintf(path, imAcq->imgPath, fNo);
+    std::string path;
+//    sprintf(path, imAcq->imgPath, fNo);
+    path = imAcq->imgPath + imAcq->list_path.at(fNo - 1);
+//    sprintf(path, imAcq->imgPath, imAcq->list_path.at(fNo).c_str());
+//    std::cout << imAcq->imgPath << "   "<< path << std::endl;
+//    printf("load path %s img: %s   n:%d\n", path, imAcq->list_path.at(fNo).c_str(),fNo);
 
-    printf("load path %s\n", path);
-
-    return cvLoadImage(path);
+    return cvLoadImage(path.c_str());
 }
 
 IplImage *imAcqLoadCurrentFrame(ImAcq *imAcq)
